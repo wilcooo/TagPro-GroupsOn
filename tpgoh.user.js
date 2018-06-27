@@ -29,7 +29,8 @@ const groups_on_home = true;                                                    
 // create a new group with a single click from there too. Works when already in one!  //  //
 const groups_on_find = true;                                                          //  //
                                                                                       //  //
-// Shows available groups *of all servers* on the 'groups' page                       //  //
+// Shows available groups *of all servers* on the 'groups' page not just those of the //  //
+// server that you happen to be on.                                                   //  //
 const groups_on_groups = true;                                                        //  //
                                                                                       //  //
 // Shows available groups *of all servers* within a group you've already joined       //  //
@@ -51,6 +52,13 @@ const position = 'top';                                                         
 //////////////////////////////////////
 // SCROLL FURTHER AT YOUR OWN RISK! //
 //////////////////////////////////////
+
+
+
+var short_name = 'groups_on_homepage';             // An alphabetic (no spaces/numbers, preferably lowercase) distinctive name for the script.
+var version = GM_info.script.version;  // The version number is automatically fetched from the metadata.
+tagpro.ready(function(){ tagpro.scripts = Object.assign( tagpro.scripts || {}, {short_name:{version:version}} ); });
+console.log('START: ' + GM_info.script.name + ' (v' + version + ' by ' + GM_info.script.author + ')');
 
 
 
@@ -110,7 +118,11 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
         container.appendChild(groups_list);
 
         // Add the container to the userscript-div and make unhide that
-        var pos = document.getElementById('userscript-'+position);
+        var pos =
+            document.getElementById('userscript-'+position) ||
+            document.getElementById('userscript-home') ||
+            document.getElementById('userscript-top');
+        if (!pos) return tagpro.helpers.displayError('Sorry, something went wrong while trying to show you the groups of all servers. Error code: Giraffe (inform /u/Wilcooo if you want me to fix it)');
         if (insertBefore) pos.insertBefore(container, pos.firstChild);
         else              pos.append(container);
         pos.classList.remove('hidden');
@@ -124,35 +136,27 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
 
     if (Date.now() - groups_list_cache.time < 65e3) groups_list.innerHTML += groups_list_cache.html;
 
-
-
     // Get ping and server stats for each server
-    var stats = new Promise(function(resolve, reject) {
+    window.addEventListener('load',function(){
 
-        window.addEventListener('load',function(){
-            var stats = {};
+        servers.forEach( function(server) {
+            var host = 'http://tagpro-'+server+'.koalabeast.com:80';
 
-            var todo = servers.length;
+            var connection = io.connect(host, {transports: ["websocket"]});
+            console.log(io)
 
-            servers.forEach( function(server) {
-                var host = 'http://tagpro-'+server+'.koalabeast.com:80';
+            connection.on('connect',function(){
+                var ping = -Date.now();
+                connection.emit('stats',{},function(stats) {
+                    ping += Date.now();
 
-                var connection = io.connect(host, {transports: ["websocket"]});
-
-                connection.on('connect',function(){
-                    var ping = -Date.now();
-                    connection.emit('stats',{},function(response) {
-                        ping += Date.now();
-                        stats[server] = response;
-                        stats[server].ping = ping;
-                        if (--todo <= 0) resolve(stats);
-                    });
+                    styleSheet.insertRule('.'+server+'-stats:after { content:"(ping: '+ping+', '+stats.players+' players in '+stats.games+' games)"; color:#868686; font-style:italic; font-size:small; }');
+                    styleSheet.insertRule('.'+server+'-stats .spinner { display:none !important; }');
                 });
             });
         });
     });
 
-    stats.then(console.log);
 
     var request = new XMLHttpRequest();
 
@@ -168,39 +172,28 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
                             <div class="row">
                                 <div class="col-md-12">
                                     <div class="pull-right group-type"> `+group.type+` </div>
-                                    <div class="group-name"> `+group.name+` </div>
+                                    <div class="group-name ellipsis"> `+group.name+` </div>
                                 </div>
                                 <div class="col-xs-6">
-                                    <div> Leader: `+group.leader+` </div>
-                                    <div> Players: `+group.players+` </div>
+                                    <div class="ellipsis"> Leader: `+group.leader+` </div>
+                                    <div class="ellipsis"> Players: `+group.players+` </div>
                                 </div>
                                 <div class="col-xs-6">
                                     <a class="btn btn-primary pull-right" href="`+group.link+`"> Join Group </a>
                                 </div>
-                                <div class="col-xs-12">
+                                <div class="col-xs-12 ellipsis `+group.server+`-stats">
                                     Server: `+group.server[0].toUpperCase() + group.server.slice(1)+`
-                                    <i style="color:#868686" class="`+group.server+`-stats">
-                                        <div class=spinner>
-                                            <div class=spinner-item></div>
-                                            <div class=spinner-item></div>
-                                            <div class=spinner-item></div>
-                                        </div>
-                                    </i>
+                                    <div class=spinner style="display:inline">
+                                        <div class=spinner-item></div>
+                                        <div class=spinner-item></div>
+                                        <div class=spinner-item></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>`;
             groups_list.innerHTML += group_html;
         }
-
-        stats.then(function(stats) {
-
-            for (var server of servers) {
-                for (var server_ping of document.getElementsByClassName(server+'-stats')) {
-                    server_ping.innerText = '(ping: ' + stats[server].ping + ', ' + stats[server].players + ' players in ' + stats[server].games + ' games)';
-                }
-            }
-        });
 
         if (data.groups.length == 0) {
             groups_list.innerHTML = `
@@ -267,3 +260,9 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
     };
 
 }
+
+
+document.head.appendChild( document.createElement('style' ));
+var styleSheet = document.styleSheets[ document.styleSheets.length -1 ];
+
+styleSheet.insertRule( '.ellipsis { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }' );
