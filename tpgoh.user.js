@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         TagPro Groups on Homepage
-// @version      1.0
+// @version      1.1
 // @description  Show available groups *of all servers* on the homepage, joiner page and inside a group
 // @author       Ko
 // @supportURL   https://www.reddit.com/message/compose/?to=Wilcooo
