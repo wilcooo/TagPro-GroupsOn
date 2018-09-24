@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         TagPro Groups on Homepage
-// @version      1.1
+// @version      2.0
 // @description  Show available groups *of all servers* on the homepage, joiner page and inside a group
 // @author       Ko
 // @supportURL   https://www.reddit.com/message/compose/?to=Wilcooo
@@ -11,56 +11,22 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @license      MIT
+// @icon         https://raw.githubusercontent.com/wilcooo/TagPro-GroupsOnHomepage/master/icon.png
 // @require      https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.0/socket.io.slim.js
-// @connect      script.google.com
-// @connect      script.googleusercontent.com
+// @require      https://greasyfork.org/scripts/371240/code/TagPro%20Userscript%20Library.js
+// @connect      koalabeast.com
 // ==/UserScript==
 
-////////////////////////////////////////////////////////////////////////////////////////////
-//     ### --- OPTIONS --- ###                                                            //
-////////////////////////////////////////////////////////////////////////////////////////  //
-                                                                                      //  //
-// Shows available groups *of all servers* on the homepage, and lets you create a new //  //
-// group with a single click from there too. This also works when you've already      //  //
-// joined a group!                                                                    //  //
-const groups_on_home = true;                                                          //  //
-                                                                                      //  //
-// Shows available groups *of all servers* while finding/joining a game, and lets you //  //
-// create a new group with a single click from there too. Works when already in one!  //  //
-const groups_on_find = true;                                                          //  //
-                                                                                      //  //
-// Shows available groups *of all servers* on the 'groups' page not just those of the //  //
-// server that you happen to be on.                                                   //  //
-const groups_on_groups = true;                                                        //  //
-                                                                                      //  //
-// Shows available groups *of all servers* within a group you've already joined       //  //
-const groups_in_group = true;                                                         //  //
-                                                                                      //  //
-// Position on homepage ( can be 'top', 'home', or 'bottom' )                         //  //
-// 'home' means beneath the video on the homepage                                     //  //
-// TODO: link to a picture that explains these positions                              //  //
-const position = 'top';                                                               //  //
-                                                                                      //  //
-////////////////////////////////////////////////////////////////////////////////////////  //
-//                                                     ### --- END OF OPTIONS --- ###     //
-////////////////////////////////////////////////////////////////////////////////////////////
+
+
+/* global tagpro, io, tpul */
 
 
 
-
-
-//////////////////////////////////////
-// SCROLL FURTHER AT YOUR OWN RISK! //
-//////////////////////////////////////
-
-
-
-var short_name = 'groups_on_homepage';             // An alphabetic (no spaces/numbers, preferably lowercase) distinctive name for the script.
+var short_name = 'groups_on_homepage'; // An alphabetic (no spaces/numbers, preferably lowercase) distinctive name for the script.
 var version = GM_info.script.version;  // The version number is automatically fetched from the metadata.
 tagpro.ready(function(){ tagpro.scripts = Object.assign( tagpro.scripts || {}, {short_name:{version:version}} ); });
 console.log('START: ' + GM_info.script.name + ' (v' + version + ' by ' + GM_info.script.author + ')');
-
-
 
 
 // Userscripts load in the order that they appear in Tamermonkey.
@@ -69,55 +35,177 @@ console.log('START: ' + GM_info.script.name + ' (v' + version + ' by ' + GM_info
 const insertBefore = false;
 
 
+var settings = tpul.settings.addSettings({
+    id: short_name,
+    title: "Configure Groups on Homepage",
+    tooltipText: "Groups on Homepage",
+    icon: "https://raw.githubusercontent.com/wilcooo/TagPro-GroupsOnHomepage/master/icon.png",
+
+    fields: {
+        groups_on_home: {
+            label: 'Show all public groups (worldwide) on the homepage',
+            type: 'checkbox',
+            default: true,
+        },
+        groups_on_find: {
+            label: 'Show all public groups (worldwide) while finding a game',
+            type: 'checkbox',
+            default: true,
+        },
+        groups_on_groups: {
+            label: 'Show all public groups (worldwide) on the /groups page, instead of just the current server\'s groups',
+            type: 'checkbox',
+            default: true,
+        },
+        groups_in_group: {
+            label: 'Show all public groups (worldwide) while in a group',
+            type: 'checkbox',
+            default: true,
+        },
+        position: {
+            label: 'Position of the groups on the homepage',
+            type: 'select',
+            options: ['top','bottom'],
+            default: 'top',
+        },
+        interval: {
+            label: 'How often should this script update the groups, so you don\'t have to F5 all the time? Choose an amount of seconds, or set to 0 to never update',
+            type: 'int',
+            min: 0,
+            max: 600,
+            default: 60
+        },
+    },
+
+    events: {
+        open: function () {
+
+            // Changing the layout a bit after the config panel is opened...
+
+            [...this.frame.getElementsByClassName('field_label')].forEach( function(el) {
+                el.classList.remove('col-xs-4');
+                el.classList.add('col-xs-8');
+                el.nextElementSibling.classList.remove('col-xs-8');
+                el.nextElementSibling.classList.add('col-xs-4');
+            } )
+        },
+        save: function() {
+
+            // Making sure (most) options take effect immediately after a save...
+
+            position = settings.get("position");
+            groups_on_home = settings.get("groups_on_home");
+            groups_on_find = settings.get("groups_on_find");
+            groups_on_groups = settings.get("groups_on_groups");
+            groups_in_group = settings.get("groups_in_group");
+            interval = settings.get("interval");
+
+
+            // Update the position of the groups if necessary:
+
+            var groups_div = document.getElementById('GroPro-groups');
+
+            update_groups();
+
+            groups_div.classList.remove('hidden');
+
+            if (window.location.pathname === '/' && !groups_on_home ||
+                window.location.pathname.match(/^\/groups\/[a-z]{8}$/) && !groups_in_group ||
+                window.location.pathname === '/groups' && !groups_on_groups ||
+                window.location.pathname === '/games/find' && !groups_on_find ) {
+
+                groups_div.classList.add('hidden');
+            }
+
+        }
+    }
+});
+
+
+var position = settings.get("position"),
+    groups_on_home = settings.get("groups_on_home"),
+    groups_on_find = settings.get("groups_on_find"),
+    groups_on_groups = settings.get("groups_on_groups"),
+    groups_in_group = settings.get("groups_in_group"),
+    interval = settings.get("interval");
+
+
+
+
+
+
 const servers = ['centra','pi','chord','diameter','origin','sphere','radius','orbit'];
 
-const groups_api = 'https://script.google.com/macros/s/AKfycbxF5kcVoFbqmLlbHB2_nJ_dCRoh2iOXDpFyzAq0Kw2UDjM7qEHf/exec';
+// We don't use this api anymore, since anonymous xmlhttpRequests are now possible.
+//const groups_api = 'https://script.google.com/macros/s/AKfycbxF5kcVoFbqmLlbHB2_nJ_dCRoh2iOXDpFyzAq0Kw2UDjM7qEHf/exec';
 
 
 
+function get_groups() {return new Promise(function(resolve,reject) {
+
+    var parser = new DOMParser(),
+        groups = [],
+        pending = 0;
+
+    servers.forEach(function(server) {
+
+        pending ++;
+
+        GM_xmlhttpRequest({
+            url: 'http://tagpro-'+server+'.koalabeast.com/groups/',
+            anonymous: true,
+            onload: done,
+            onerror: done,
+            context: server,
+        })
+    })
+
+    function done(response){
+
+        pending --;
+
+        if (!response.response) return console.error("Couldn't get groups on "+response.context, response);
+
+        var groups_doc = parser.parseFromString(response.response, "text/html");
+        for (var group_item of groups_doc.getElementsByClassName('group-item')) {
+
+            var group = { server: response.context }
+            groups.push(group);
+
+            for (var el of group_item.querySelectorAll("*") ) {
+                if (el.classList.contains('group-type')) {
+                    group.type = el.innerText.trim();
+                } else if (el.classList.contains('group-name')) {
+                    group.name = el.innerText.trim();
+                } else if (el.tagName == "A") {
+                    group.link = el.href;
+                } else if (el.innerText.trim().startsWith('Leader')) {
+                    group.leader = el.innerText.slice(el.innerText.indexOf(":")+1);
+                } else if (el.innerText.trim().startsWith('Players')) {
+                    group.players = el.innerText.slice(el.innerText.indexOf(":")+1);
+                }
+            }
+        }
+
+        if (pending == 0) resolve(groups);
+    }
+})}
 
 
-if (window.location.pathname === '/groups') {  // If we are on the groups selection page
 
-    if (groups_on_groups) show_groups( document.getElementById('groups-list'), false);
-}
-
-else if (window.location.pathname.match(/^\/groups\/[a-z]{8}$/)) {  // If we are in a group
-
-    if (groups_in_group) show_groups();
-}
-
-else if (window.location.pathname === '/games/find') {  // In the process of joining a game
-
-    if (groups_on_find) show_groups();
-}
-
-else if (window.location.port.match(/^8[0-9]{3}$/)) {  // If we are in a game
-}
-
-else if (window.location.pathname === '/') {  // If we are on the homepage
-
-    if (groups_on_home) show_groups();
-}
-
-else {  // If we are on any other page of the server
-}
+function update_groups() {
 
 
+    if (!(window.location.pathname === '/groups' && groups_on_groups || // If we are on the groups selection page
+    window.location.pathname.match(/^\/groups\/[a-z]{8}$/) && groups_in_group || // If we are in a group
+    window.location.pathname === '/games/find' && groups_on_find || // In the process of joining a game
+    window.location.pathname === '/' && groups_on_home )) // If we are on the homepage
+        return;
 
 
-
-function show_groups(groups_list=document.createElement('div'), newGroupWidget=true) {
-
-    // Create a container for the groups
-    if (!groups_list.parentElement) {
-        var container = document.createElement('div');
-        container.id = 'GroPro-groups';
-        container.className = 'container';
-
-        container.appendChild(groups_list);
-
-        // Add the container to the userscript-div and make unhide that
+    // Relocate the groups container
+    // Add the container to the userscript-div and make unhide that
+    if (groups_list.parentElement.id == "GroPro-groups") {
         var pos =
             document.getElementById('userscript-'+position) ||
             document.getElementById('userscript-home') ||
@@ -143,7 +231,6 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
             var host = 'http://tagpro-'+server+'.koalabeast.com:80';
 
             var connection = io.connect(host, {transports: ["websocket"]});
-            console.log(io)
 
             connection.on('connect',function(){
                 var ping = -Date.now();
@@ -158,14 +245,11 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
     });
 
 
-    var request = new XMLHttpRequest();
-
-    request.onload = function() {
-        var data = JSON.parse(request.response);
+    get_groups().then(function(groups) {
 
         groups_list.innerHTML = '';
 
-        for (var group of data.groups) {
+        for (var group of groups) {
             var group_html =
                     `<div class="col-sm-6 col-md-4">
                         <div class="group-item">
@@ -179,7 +263,7 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
                                     <div class="ellipsis"> Players: `+group.players+` </div>
                                 </div>
                                 <div class="col-xs-6">
-                                    <a class="btn btn-primary pull-right" href="`+group.link+`"> Join Group </a>
+                                    <a class="btn btn-primary pull-right ellipsis" href="`+group.link+`"> Join Group </a>
                                 </div>
                                 <div class="col-xs-12 ellipsis `+group.server+`-stats">
                                     Server: `+group.server[0].toUpperCase() + group.server.slice(1)+`
@@ -195,10 +279,10 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
             groups_list.innerHTML += group_html;
         }
 
-        if (data.groups.length == 0) {
+        if (groups.length == 0) {
             groups_list.innerHTML = `
                     <div class="col-sm-6 col-md-4">
-                        <div class="group-item">
+                        <div class="group-item" style="height:118px">
                             <div class="row">
                                 <div class="col-md-12">
                                     <div class="group-name">No public groups available. Create one!</div>
@@ -208,20 +292,22 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
                     </div>`;
         }
 
-        if (newGroupWidget) {
+        if (window.location.pathname !== '/groups') {
             groups_list.innerHTML +=
                 `<div class="col-sm-6 col-md-4">
                      <div class="group-item">
                          <div class="row">
                              <form method="post" action="/groups/create">
                                  <div class="col-md-12">
-                                     <input name="name" class="group-name" style="background:0;border:0;width:100%" value="Your group">
+                                     <input name="name" class="group-name" style="background:0;border:0;width:100%;height:27px" value="Your group">
                                  </div>
-                                 <div class="col-md-12 pull-right">
-                                     <label tabindex="0" class="btn btn-default input-label" style="margin:6px">
+                                 <div class="col-md-12"><br></div>
+                                 <div class="col-xs-6">
+                                     <label tabindex="0" class="btn btn-default input-label ellipsis">
                                          <input tabindex="-1" type="checkbox" name="public"> Public Group
                                      </label>
-                                     <button class="btn btn-primary" style="margin:6px">Create Group</button>
+                                 </div><div class="col-xs-6">
+                                     <button class="btn btn-primary ellipsis pull-right" style="">Create Group</button>
                                  </div>
                              </form>
                          </div>
@@ -243,23 +329,27 @@ function show_groups(groups_list=document.createElement('div'), newGroupWidget=t
         }
 
         GM_setValue('groups-list-cache', {'html': groups_list.innerHTML, 'time': Date.now()});
-    };
+    });
 
-    request.open( "GET", groups_api );
-    request.send();
 
-    labelKeyDown = function(event) {
-        if (event.code == 'Space') {
-            event.preventDefault();
-            event.target.firstElementChild.checked ^= true;
-        }
-        if (event.code == 'Enter') {
-            event.preventDefault();
-            event.target.closest('form').submit();
-        }
-    };
-
+    clearTimeout(timeout);
+    if (interval) timeout = setTimeout(update_groups, 1000*interval);
 }
+
+
+var timeout = -1,
+    groups_list = document.querySelector(".groups-list") || document.createElement('div');
+
+// Create a container for the groups
+if (!groups_list.parentElement) {
+    var container = document.createElement('div');
+    container.id = 'GroPro-groups';
+    container.className = 'container';
+
+    container.appendChild(groups_list);
+}
+
+update_groups();
 
 
 document.head.appendChild( document.createElement('style' ));
