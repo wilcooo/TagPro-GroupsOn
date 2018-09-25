@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         TagPro Groups on Homepage
-// @version      2.0
+// @version      2.1
 // @description  Show available groups *of all servers* on the homepage, joiner page and inside a group
 // @author       Ko
 // @supportURL   https://www.reddit.com/message/compose/?to=Wilcooo
@@ -15,6 +15,7 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.0/socket.io.slim.js
 // @require      https://greasyfork.org/scripts/371240/code/TagPro%20Userscript%20Library.js
 // @connect      koalabeast.com
+// @namespace https://greasyfork.org/users/152992
 // ==/UserScript==
 
 
@@ -24,7 +25,7 @@
 
 
 var short_name = 'groups_on_homepage'; // An alphabetic (no spaces/numbers, preferably lowercase) distinctive name for the script.
-var version = GM_info.script.version;  // The version number is automatically fetched from the metadata.
+var version = GM_info.script.version; // The version number is automatically fetched from the metadata.
 tagpro.ready(function(){ tagpro.scripts = Object.assign( tagpro.scripts || {}, {short_name:{version:version}} ); });
 console.log('START: ' + GM_info.script.name + ' (v' + version + ' by ' + GM_info.script.author + ')');
 
@@ -140,6 +141,7 @@ const servers = ['centra','pi','chord','diameter','origin','sphere','radius','or
 //const groups_api = 'https://script.google.com/macros/s/AKfycbxF5kcVoFbqmLlbHB2_nJ_dCRoh2iOXDpFyzAq0Kw2UDjM7qEHf/exec';
 
 
+var warned = false;
 
 function get_groups() {return new Promise(function(resolve,reject) {
 
@@ -156,6 +158,7 @@ function get_groups() {return new Promise(function(resolve,reject) {
             anonymous: true,
             onload: done,
             onerror: done,
+            timeout: 5000,
             context: server,
         })
     })
@@ -164,28 +167,37 @@ function get_groups() {return new Promise(function(resolve,reject) {
 
         pending --;
 
-        if (!response.response) return console.error("Couldn't get groups on "+response.context, response);
+        if (response.finalUrl.includes('groupAuth')) {
+            //if (!warned) warned = tagpro.helpers.displayError("Sorry, your IP address has been flagged - so the GroupsOnHome script can't yet show you the groups. No worries though, I'm working on a fix for this.");
+            console.error("Sorry, your IP address has been flagged - so the GroupsOnHome script can't yet show you the groups. No worries though, I'm working on a fix for this.");
+            groups.flagged = true;
+        }
 
-        var groups_doc = parser.parseFromString(response.response, "text/html");
-        for (var group_item of groups_doc.getElementsByClassName('group-item')) {
+        if (response.response) {
 
-            var group = { server: response.context }
-            groups.push(group);
+            var groups_doc = parser.parseFromString(response.response, "text/html");
+            for (var group_item of groups_doc.getElementsByClassName('group-item')) {
 
-            for (var el of group_item.querySelectorAll("*") ) {
-                if (el.classList.contains('group-type')) {
-                    group.type = el.innerText.trim();
-                } else if (el.classList.contains('group-name')) {
-                    group.name = el.innerText.trim();
-                } else if (el.tagName == "A") {
-                    group.link = el.href;
-                } else if (el.innerText.trim().startsWith('Leader')) {
-                    group.leader = el.innerText.slice(el.innerText.indexOf(":")+1);
-                } else if (el.innerText.trim().startsWith('Players')) {
-                    group.players = el.innerText.slice(el.innerText.indexOf(":")+1);
+                var group = { server: response.context }
+                groups.push(group);
+
+                for (var el of group_item.querySelectorAll("*") ) {
+                    if (el.classList.contains('group-type')) {
+                        group.type = el.innerText.trim();
+                    } else if (el.classList.contains('group-name')) {
+                        group.name = el.innerText.trim();
+                    } else if (el.tagName == "A") {
+                        group.link = el.href;
+                    } else if (el.innerText.trim().startsWith('Leader')) {
+                        group.leader = el.innerText.slice(el.innerText.indexOf(":")+1);
+                    } else if (el.innerText.trim().startsWith('Players')) {
+                        group.players = el.innerText.slice(el.innerText.indexOf(":")+1);
+                    }
                 }
             }
         }
+
+        else console.error("Couldn't get groups on "+response.context, response);
 
         if (pending == 0) resolve(groups);
     }
@@ -200,7 +212,7 @@ function update_groups() {
     window.location.pathname.match(/^\/groups\/[a-z]{8}$/) && groups_in_group || // If we are in a group
     window.location.pathname === '/games/find' && groups_on_find || // In the process of joining a game
     window.location.pathname === '/' && groups_on_home )) // If we are on the homepage
-        return;
+    { return; }
 
 
     // Relocate the groups container
@@ -212,7 +224,7 @@ function update_groups() {
             document.getElementById('userscript-top');
         if (!pos) return tagpro.helpers.displayError('Sorry, something went wrong while trying to show you the groups of all servers. Error code: Giraffe (inform /u/Wilcooo if you want me to fix it)');
         if (insertBefore) pos.insertBefore(container, pos.firstChild);
-        else              pos.append(container);
+        else pos.append(container);
         pos.classList.remove('hidden');
     }
 
@@ -279,7 +291,14 @@ function update_groups() {
             groups_list.innerHTML += group_html;
         }
 
-        if (groups.length == 0) {
+        if (groups.flagged) {
+            groups_list.innerHTML = `
+                    <div class="col-sm-6 col-md-4">
+                        <div class="group-item" style="height:118px; font-size:smaller; color:lightgray">
+                            Sorry, your IP address has been flagged by TagPro - so the GroupsOnHome script can't yet show you the groups. No worries though, I'm working on a fix for this.
+                        </div>
+                    </div>`;
+        } else if (groups.length == 0) {
             groups_list.innerHTML = `
                     <div class="col-sm-6 col-md-4">
                         <div class="group-item" style="height:118px">
