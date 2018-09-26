@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         TagPro Groups on Homepage
-// @version      2.1
+// @version      2.2
 // @description  Show available groups *of all servers* on the homepage, joiner page and inside a group
 // @author       Ko
 // @supportURL   https://www.reddit.com/message/compose/?to=Wilcooo
@@ -88,7 +88,7 @@ var settings = tpul.settings.addSettings({
                 el.classList.add('col-xs-8');
                 el.nextElementSibling.classList.remove('col-xs-8');
                 el.nextElementSibling.classList.add('col-xs-4');
-            } )
+            } );
         },
         save: function() {
 
@@ -160,8 +160,8 @@ function get_groups() {return new Promise(function(resolve,reject) {
             onerror: done,
             timeout: 5000,
             context: server,
-        })
-    })
+        });
+    });
 
     function done(response){
 
@@ -178,7 +178,7 @@ function get_groups() {return new Promise(function(resolve,reject) {
             var groups_doc = parser.parseFromString(response.response, "text/html");
             for (var group_item of groups_doc.getElementsByClassName('group-item')) {
 
-                var group = { server: response.context }
+                var group = { server: response.context };
                 groups.push(group);
 
                 for (var el of group_item.querySelectorAll("*") ) {
@@ -187,7 +187,8 @@ function get_groups() {return new Promise(function(resolve,reject) {
                     } else if (el.classList.contains('group-name')) {
                         group.name = el.innerText.trim();
                     } else if (el.tagName == "A") {
-                        group.link = el.href;
+                        if (el.href.startsWith("http")) group.link = el.href;
+                        else group.link = "http://tagpro-"+group.server+".koalabeast.com"+el.href;
                     } else if (el.innerText.trim().startsWith('Leader')) {
                         group.leader = el.innerText.slice(el.innerText.indexOf(":")+1);
                     } else if (el.innerText.trim().startsWith('Players')) {
@@ -199,9 +200,9 @@ function get_groups() {return new Promise(function(resolve,reject) {
 
         else console.error("Couldn't get groups on "+response.context, response);
 
-        if (pending == 0) resolve(groups);
+        if (pending === 0) resolve(groups);
     }
-})}
+});}
 
 
 
@@ -221,7 +222,8 @@ function update_groups() {
         var pos =
             document.getElementById('userscript-'+position) ||
             document.getElementById('userscript-home') ||
-            document.getElementById('userscript-top');
+            document.getElementById('userscript-top') ||
+            (!location.host.startsWith("tagpro") && document.getElementsByClassName('.header')[0]);
         if (!pos) return tagpro.helpers.displayError('Sorry, something went wrong while trying to show you the groups of all servers. Error code: Giraffe (inform /u/Wilcooo if you want me to fix it)');
         if (insertBefore) pos.insertBefore(container, pos.firstChild);
         else pos.append(container);
@@ -298,7 +300,7 @@ function update_groups() {
                             Sorry, your IP address has been flagged by TagPro - so the GroupsOnHome script can't yet show you the groups. No worries though, I'm working on a fix for this.
                         </div>
                     </div>`;
-        } else if (groups.length == 0) {
+        } else if (groups.length === 0) {
             groups_list.innerHTML = `
                     <div class="col-sm-6 col-md-4">
                         <div class="group-item" style="height:118px">
