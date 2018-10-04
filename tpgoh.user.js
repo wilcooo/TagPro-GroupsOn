@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         TagPro Groups on Homepage
-// @version      2.3
+// @version      2.4
 // @description  Show available groups *of all servers* on the homepage, joiner page and inside a group
 // @author       Ko
 // @supportURL   https://www.reddit.com/message/compose/?to=Wilcooo
 // @website      https://redd.it/no-post-yet
 // @download     https://raw.githubusercontent.com/wilcooo/TagPro-GroupsOnHomepage/master/tpgoh.user.js
-// @match        http://*.koalabeast.com:*/*
+// @match        http://*.koalabeast.com*
+// @match        http://tagpro.gg/
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -223,7 +224,7 @@ function update_groups() {
             document.getElementById('userscript-'+position) ||
             document.getElementById('userscript-home') ||
             document.getElementById('userscript-top') ||
-            (!location.host.startsWith("tagpro") && document.getElementsByClassName('header')[0]);
+            (location.host.startsWith("tagpro.") && document.getElementsByClassName('header')[0]);
         if (!pos) return tagpro.helpers.displayError('Sorry, something went wrong while trying to show you the groups of all servers. Error code: Giraffe (inform /u/Wilcooo if you want me to fix it)');
         if (insertBefore) pos.insertBefore(container, pos.firstChild);
         else pos.append(container);
